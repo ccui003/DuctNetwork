@@ -314,9 +314,6 @@ classdef DuctNetwork < handle
                 e = obj.U'*dP; 
                 varargout={e};
             end
-%             if any(isnan(varargout{1}))
-%                 varargout{:}
-%             end
         end
         
         function [X, Q, P] = Sim(obj, Param_Value, Param_Idx)
@@ -354,7 +351,7 @@ classdef DuctNetwork < handle
                 elseif ~isempty(obj.X_ub) && any(X0>obj.X_ub)
                     X0 = obj.X_ub - rand(obj.t,1);
                 end
-                options = optimoptions(options,'SpecifyObjectiveGradient',false);
+%                 options = optimoptions(options,'SpecifyObjectiveGradient',false);
             end
             dP=arrayfun(@(Branch_idx)obj.BranchPressureDrop(Branch_idx,X,S_value),(1:obj.b)','UniformOutput',false);
             dP=cell2mat(dP);
