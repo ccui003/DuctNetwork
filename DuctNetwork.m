@@ -43,7 +43,13 @@ classdef DuctNetwork < handle
         proc_ConfigIdx; % vector to indicate the configuration ID used in each procedure, size proc by 1
         proc_ObPosMatrix; % cell array of Observation Position Matrix, size proc by 1, each is matrix of size ob by (n+b)
         proc_Measurements; % number array of Measurements record, size proc by ob
+        d; % number of dampers
+        d_Sidx; % array of parameters index for damper positions
+        gdr; % number of terminals
+        gdr_Bidx; % array of branch index for GDRs
         n_trail;
+        UseNumericGrad; % the jacobian option for optimizer
+        Display; % The display option for optimizer
     end
     
     methods
@@ -77,7 +83,13 @@ classdef DuctNetwork < handle
             obj.proc=0;
             obj.proc_ConfigIdx = zeros(0,1);
             obj.proc_Measurements = zeros(0,0);
+            obj.d = 0; 
+            obj.d_Sidx = []; 
+            obj.gdr = 0; 
+            obj.gdr_Bidx = []; 
             obj.n_trail = 0;
+            obj.UseNumericGrad = false;
+            obj.Display = 'none';
         end
         
         function Branch_Idx = AddBranch(obj, FromNode, ToNode, varargin)
@@ -316,31 +328,37 @@ classdef DuctNetwork < handle
             end
         end
         
-        function [X, Q, P] = Sim(obj, Param_Value, Param_Idx)
+        function [X, Q, P] = Sim(obj, varargin)
+            obj.UseNumericGrad = false;
+            obj.Display = 'none';
+            [X, Q, P] = obj.Sim_trust_region_reflective(varargin{:});
+        end
+        
+        function [X, Q, P] = Sim_trust_region_reflective(obj, Param_Value, Param_Idx)
             if nargin==1
                 S_value = obj.S;
             elseif nargin==2
                 S_value = Param_Value;
-            elseif nargin==3
+            elseif nargin>=3
                 S_value = obj.S;
                 if iscell(Param_Idx), Param_Idx = cellfun(@(Str) find(strcmp(Str,obj.s_ParamDescription)),Param_Idx); end
                 S_value(Param_Idx) = Param_Value;
             end
             
-            options = optimoptions(@lsqnonlin,'Display','iter',...
+            options = optimoptions(@lsqnonlin,'Display',obj.Display,...
                 'Algorithm','trust-region-reflective',...
-                'FunctionTolerance',1e-6,'StepTolerance',1e-6,...
+                'FunctionTolerance',1e-6,...
                 'MaxIterations',obj.t*10,...
                 'SpecifyObjectiveGradient',true,'CheckGradients',false,...
                 'FiniteDifferenceType','central','FiniteDifferenceStepSize',1e-10);
             exitflag = -1;resnorm=10;
             if isempty(obj.X)
                 X0 = ones(obj.t,1);
+%                 X0 = randn(obj.t,1);
             else
                 X0 = obj.X;
             end
-            % optimoptions(options,'SpecifyObjectiveGradient',false);
-            while ~(exitflag>0 && resnorm<1e-4)
+            while exitflag<=0 || resnorm>1e-4
                 obj.n_trail = obj.n_trail+1;
                 [X,resnorm,~,exitflag] = lsqnonlin(@(x) obj.res_StateEquation(x,S_value),X0,obj.X_lb,obj.X_ub,options);
                 X0 = randn(obj.t,1);
@@ -351,7 +369,9 @@ classdef DuctNetwork < handle
                 elseif ~isempty(obj.X_ub) && any(X0>obj.X_ub)
                     X0 = obj.X_ub - rand(obj.t,1);
                 end
-%                 options = optimoptions(options,'SpecifyObjectiveGradient',false);
+                if obj.UseNumericGrad
+                    options = optimoptions(options,'SpecifyObjectiveGradient',false);
+                end
             end
             dP=arrayfun(@(Branch_idx)obj.BranchPressureDrop(Branch_idx,X,S_value),(1:obj.b)','UniformOutput',false);
             dP=cell2mat(dP);
@@ -360,6 +380,115 @@ classdef DuctNetwork < handle
             P = (obj.A*obj.A')\obj.A*dP;
             obj.Q = Q;
             obj.P = P;
+        end
+
+        function [X, Q, P] = Sim_levenberg_marquardt(obj, Param_Value, Param_Idx)
+            if nargin==1
+                S_value = obj.S;
+            elseif nargin==2
+                S_value = Param_Value;
+            elseif nargin>=3
+                S_value = obj.S;
+                if iscell(Param_Idx), Param_Idx = cellfun(@(Str) find(strcmp(Str,obj.s_ParamDescription)),Param_Idx); end
+                S_value(Param_Idx) = Param_Value;
+            end
+            
+            options = optimoptions(@lsqnonlin,'Display',obj.Display,...
+                'Algorithm','levenberg-marquardt',...
+                'FunctionTolerance',1e-8,...
+                'MaxIterations',obj.t*10,...
+                'SpecifyObjectiveGradient',true,'CheckGradients',false,...
+                'FiniteDifferenceType','central','FiniteDifferenceStepSize',1e-10);
+            exitflag = -1;resnorm=10;
+            if isempty(obj.X)
+                X0 = ones(obj.t,1);
+            else
+                X0 = obj.X;
+            end
+            while exitflag<=0 || norm(resnorm)>1e-4
+                obj.n_trail = obj.n_trail+1;
+                [X,resnorm,~,exitflag] = lsqnonlin(@(x) obj.res_StateEquation(x,S_value),X0,obj.X_lb,obj.X_ub,options);
+                X0 = randn(obj.t,1);
+                if ~isempty(obj.X_lb) && ~isempty(obj.X_ub) && any([X0<obj.X_lb;X0>obj.X_ub])
+                    X0 = obj.X_ub + rand(obj.t,1).*(obj.X_ub-obj.X_lb);
+                elseif ~isempty(obj.X_lb) && any(X0<obj.X_lb)
+                    X0 = obj.X_lb + rand(obj.t,1);
+                elseif ~isempty(obj.X_ub) && any(X0>obj.X_ub)
+                    X0 = obj.X_ub - rand(obj.t,1);
+                end
+                if obj.UseNumericGrad
+                    options = optimoptions(options,'SpecifyObjectiveGradient',false);
+                end
+            end
+            dP=arrayfun(@(Branch_idx)obj.BranchPressureDrop(Branch_idx,X,S_value),(1:obj.b)','UniformOutput',false);
+            dP=cell2mat(dP);
+            obj.X = X;
+            Q = obj.U*X;
+            P = (obj.A*obj.A')\obj.A*dP;
+            obj.Q = Q;
+            obj.P = P;
+        end
+        
+        function [X, Q, P] = Sim_trust_region_dogleg(obj, Param_Value, Param_Idx)
+            if nargin==1
+                S_value = obj.S;
+            elseif nargin==2
+                S_value = Param_Value;
+            elseif nargin>=3
+                S_value = obj.S;
+                if iscell(Param_Idx), Param_Idx = cellfun(@(Str) find(strcmp(Str,obj.s_ParamDescription)),Param_Idx); end
+                S_value(Param_Idx) = Param_Value;
+            end
+            
+            options = optimoptions(@fsolve,'Display',obj.Display,...
+                'Algorithm','trust-region-dogleg',...
+                'FunctionTolerance',1e-6,...
+                'MaxIterations',obj.t*10,...
+                'SpecifyObjectiveGradient',true,'CheckGradients',false,...
+                'FiniteDifferenceType','central','FiniteDifferenceStepSize',1e-10);
+            exitflag = -1;resnorm=10;
+            if isempty(obj.X)
+                X0 = ones(obj.t,1);
+            else
+                X0 = obj.X;
+            end
+            while exitflag<=0 || norm(resnorm)>1e-4
+                obj.n_trail = obj.n_trail+1;
+                [X,resnorm,exitflag] = fsolve(@(x)obj.res_StateEquation(x,S_value),X0,options);
+                X0 = randn(obj.t,1);
+                if ~isempty(obj.X_lb) && ~isempty(obj.X_ub) && any([X0<obj.X_lb;X0>obj.X_ub])
+                    X0 = obj.X_ub + rand(obj.t,1).*(obj.X_ub-obj.X_lb);
+                elseif ~isempty(obj.X_lb) && any(X0<obj.X_lb)
+                    X0 = obj.X_lb + rand(obj.t,1);
+                elseif ~isempty(obj.X_ub) && any(X0>obj.X_ub)
+                    X0 = obj.X_ub - rand(obj.t,1);
+                end
+                if obj.UseNumericGrad
+                    options = optimoptions(options,'SpecifyObjectiveGradient',false);
+                end
+            end
+            dP=arrayfun(@(Branch_idx)obj.BranchPressureDrop(Branch_idx,X,S_value),(1:obj.b)','UniformOutput',false);
+            dP=cell2mat(dP);
+            obj.X = X;
+            Q = obj.U*X;
+            P = (obj.A*obj.A')\obj.A*dP;
+            obj.Q = Q;
+            obj.P = P;
+%             function [y, dydx] = SumSquare(f, x, varargin)
+%                 [e, dedx]=f(x, varargin{:});
+%                 y = e'*e;
+%                 dydx = 2*e'*dedx;
+%             end
+        end
+                
+        function Q = SetDamperAndReadFlow(obj, theta, DamperID)
+            if ~isempty(theta)
+                obj.S(obj.d_Sidx(DamperID))=theta;
+            end
+            if nargout>0
+                obj.Sim();
+                Q = reshape(obj.Q(obj.gdr_Bidx(DamperID)),1,[]);
+            end
         end
         
         function proc_ob_Measurements = Measurements(obj,ctrl_ParamIdx, proc_ctrl_ParamValue, ob_SensorType, ob_Uncertainty, proc_ob_SensorPosition)
@@ -3440,7 +3569,7 @@ classdef DuctNetwork < handle
         function [dP, dPdQ, dPdS]=ED5_1(q, s, Selection)
             % q = [Qs,Qb,Qc];
             % s = [Ds,Db,Dc,rho];
-            ModifiedTable = 0;
+            ModifiedTable = 1;
             if (ModifiedTable == 1)
                 gExp =  0.5*s(4)*(q(3)/(pi*s(3)^2/4))^2;
                 dgdq =  [0,0,s(4)*q(3)/(pi*s(3)^2/4)^2];
@@ -3490,7 +3619,7 @@ classdef DuctNetwork < handle
         function [dP, dPdQ, dPdS]=ED5_2(q, s, Selection)
             % q = [Qs,Qb,Qc];
             % s = [Ds,Db,Dc,rho];
-            ModifiedTable = 0;
+            ModifiedTable = 1;
             if (ModifiedTable == 1)
                 gExp =  0.5*s(4)*(q(3)/(pi*s(3)^2/4))^2;
                 dgdq =  [0,0,s(4)*q(3)/(pi*s(3)^2/4)^2];
@@ -3540,7 +3669,7 @@ classdef DuctNetwork < handle
         function [dP, dPdQ, dPdS]=ED5_3(q, s, Selection)
             % q = [Qs,Qb,Qc];
             % s = [Ds,Db,Dc,rho];
-            ModifiedTable = 0;
+            ModifiedTable = 1;
             if (ModifiedTable == 1)
                 gExp =  0.5*s(4)*(q(3)/(pi*s(3)^2/4))^2;
                 dgdq =  [0,0,s(4)*q(3)/(pi*s(3)^2/4)^2];
@@ -3610,7 +3739,7 @@ classdef DuctNetwork < handle
         function [dP, dPdQ, dPdS]=ED5_4(q, s, Selection)
             % q = [Qb1,Qb2,Qc];
             % s = [Db1,Db2,Dc,rho];
-            ModifiedTable = 0;
+            ModifiedTable = 1;
             if (ModifiedTable == 1)
                 gExp =  0.5*s(4)*(q(3)/(pi*s(3)^2/4))^2;
                 dgdq =  [0,0,s(4)*q(3)/(pi*s(3)^2/4)^2];
@@ -3660,7 +3789,7 @@ classdef DuctNetwork < handle
         function [dP, dPdQ, dPdS]=ER5_1(q, s, Selection)
             % q = [Qs,Qb,Qc];
             % s = [H,Ws,Wb,Wc,rho];
-            ModifiedTable = 0;
+            ModifiedTable = 1;
             if (ModifiedTable == 1)
                 gExp =  0.5*s(5)*(q(3)/(s(1)*s(4)))^2;
                 dgdq =  [0,0,s(5)*q(3)/(s(1)*s(4))^2];
@@ -3813,7 +3942,7 @@ classdef DuctNetwork < handle
         function [dP, dPdQ, dPdS]=SD5_1(q, s, Selection)
             % q = [Qs,Qb,Qc];
             % s = [Ds,Db,Dc,rho];
-            ModifiedTable = 0;
+            ModifiedTable = 1;
             if (ModifiedTable == 1)
                 gExp =  0.5*s(4)*(q(3)/(pi*s(3)^2/4))^2;
                 dgdq =  [0,0,s(4)*q(3)/(pi*s(3)^2/4)^2];
@@ -3863,7 +3992,7 @@ classdef DuctNetwork < handle
         function [dP, dPdQ, dPdS]=SD5_3(q, s, Selection)
             % q = [Qs,Qb,Qc];
             % s = [Ds,Db,Dc,rho];
-            ModifiedTable = 0;
+            ModifiedTable = 1;
             if (ModifiedTable == 1)
                 gExp =  0.5*s(4)*(q(3)/(pi*s(3)^2/4))^2;
                 dgdq =  [0,0,s(4)*q(3)/(pi*s(3)^2/4)^2];
@@ -3913,7 +4042,7 @@ classdef DuctNetwork < handle
         function [dP, dPdQ, dPdS]=SD5_9(q, s, Selection)
             % q = [Qs,Qb,Qc];
             % s = [Ds,Db,Dc,rho];
-            ModifiedTable = 0;
+            ModifiedTable = 1;
             if (ModifiedTable == 1)
                 gExp =  0.5*s(4)*(q(3)/(pi*s(3)^2/4))^2;
                 dgdq =  [0,0,s(4)*q(3)/(pi*s(3)^2/4)^2];
@@ -3963,7 +4092,7 @@ classdef DuctNetwork < handle
         function [dP, dPdQ, dPdS]=SD5_18(q, s, Selection)
             % q = [Qb1,Qb2,Qc];
             % s = [Db1,Db2,Dc,rho];
-            ModifiedTable = 0;
+            ModifiedTable = 1;
             if (ModifiedTable == 1)
                 gExp =  0.5*s(4)*(q(3)/(pi*s(3)^2/4))^2;
                 dgdq =  [0,0,s(4)*q(3)/(pi*s(3)^2/4)^2];
