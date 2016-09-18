@@ -90,15 +90,16 @@ duct.AddFitting(19,'SR7_17',[0.45,0.3,0.45,0.8,1]);%42
 duct.AddFitting(19,'CR9_4',[0.45,0.8]);%47
 duct.AddFitting(19,'Louver',-15);%46
 duct.AddBranch(4,5);
-duct.AddFitting(20,'FanQuadratic',[1e8,1.9]);%fan
+duct.AddFitting(20,'FanQuadratic',[1e5,0.7]);%fan
 %%
 N=1;
 for ii=1:N
     disp(ii)
 %    duct.X = [];
-     duct.X = duct.U'*[700;250;950;950;950;1900;275;275;550;550;475;475;950;1500;200;200;400;1900;1900;1900]/1000;
+%    duct.X = duct.U\[700;250;950;950;950;1900;275;275;550;550;475;475;950;1500;200;200;400;1900;1900;1900]/1000;
+%      duct.X = [-0.434440842485969;-0.544010989825305;0.112271937750087;-1.09866398437664;0.495969871482978;-1.56245884056209;0.140781036821012;-0.493461064893413];
 %     duct.SetFlowLimit(zeros(20,1),1.9*ones(20,1));
     duct.Sim();
 end
 SuccessRatio=2-duct.n_trail/N;
-duct.Q
+duct.Q;

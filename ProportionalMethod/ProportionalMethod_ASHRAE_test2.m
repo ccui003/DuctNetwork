@@ -2,6 +2,7 @@
 ASHRAE_duct;
 DesignFlow = {[700,250,950],[275,275,475,475,200,200]};% M
 lambda = 0.5;
+Max_Iter = 100;
 
 N = cellfun(@length,DesignFlow);
 Branch = length(N);% M, number of branches
@@ -12,7 +13,7 @@ I = cell(1,Branch);
 TargetFlow = cell(1,Branch);
 Theta = cell(1,Branch);
 duct.S(206) = 500; % Fan Max Pressure;
-duct.S(207) = 3000; % Fan Max Flow;
+duct.S(207) = 1900; % Fan Max Flow;
 duct.SetDamperAndReadFlow(zeros(1,sum(N)),1:sum(N));% fully open all dampers
 options = optimset('Display','none','TolX',0.1);
 
@@ -23,7 +24,7 @@ for i = 1:Branch
     ERR{i} = abs(P{i}-1);
     Iter = 0;
     Theta{i} = zeros(0,N(i));
-    while max(ERR{i}(end,:))>0.1 && Iter <50
+    while max(ERR{i}(end,:))>0.1 && Iter <Max_Iter
         [~,I{i}(end+1,:)] = sort(P{i}(end,:));
         TargetFlow{i}(end+1,:) = lambda*DesignFlow{i}*P{i}(end,I{i}(end,1))+(1-lambda)*Q{i}(end,:);
         Iter = size(Theta{i},1)+1;

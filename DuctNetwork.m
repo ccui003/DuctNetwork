@@ -98,7 +98,7 @@ classdef DuctNetwork < handle
             SetNode(FromNode, 1);
             SetNode(ToNode, -1);
             [obj.n,obj.b]=size(obj.A);
-            obj.U = null(obj.A);
+            obj.U = 1e-1*null(obj.A);
             obj.t = size(obj.U,2);
             obj.b_Pdrop{Branch_Idx,1}=cell(0,1);
             obj.b_dPdQ{Branch_Idx,1}=cell(0,1);
@@ -347,8 +347,8 @@ classdef DuctNetwork < handle
             
             options = optimoptions(@lsqnonlin,'Display',obj.Display,...
                 'Algorithm','trust-region-reflective',...
-                'FunctionTolerance',1e-6,...
-                'MaxIterations',obj.t*10,...
+                'FunctionTolerance',1e-6,'StepTolerance',1e-12,...
+                'MaxIterations',obj.t*20,...
                 'SpecifyObjectiveGradient',true,'CheckGradients',false,...
                 'FiniteDifferenceType','central','FiniteDifferenceStepSize',1e-10);
             exitflag = -1;resnorm=10;
@@ -358,7 +358,7 @@ classdef DuctNetwork < handle
             else
                 X0 = obj.X;
             end
-            while exitflag<=0 || resnorm>1e-4
+            while exitflag<=0 || resnorm>1e-3
                 obj.n_trail = obj.n_trail+1;
                 [X,resnorm,~,exitflag] = lsqnonlin(@(x) obj.res_StateEquation(x,S_value),X0,obj.X_lb,obj.X_ub,options);
                 X0 = randn(obj.t,1);
@@ -372,6 +372,7 @@ classdef DuctNetwork < handle
                 if obj.UseNumericGrad
                     options = optimoptions(options,'SpecifyObjectiveGradient',false);
                 end
+%                 Q = (obj.U*X)'
             end
             dP=arrayfun(@(Branch_idx)obj.BranchPressureDrop(Branch_idx,X,S_value),(1:obj.b)','UniformOutput',false);
             dP=cell2mat(dP);
@@ -479,6 +480,39 @@ classdef DuctNetwork < handle
 %                 y = e'*e;
 %                 dydx = 2*e'*dedx;
 %             end
+        end
+        
+        function [X, Q, P] = Sim_PSO(obj, Param_Value, Param_Idx)
+            if nargin==1
+                S_value = obj.S;
+            elseif nargin==2
+                S_value = Param_Value;
+            elseif nargin>=3
+                S_value = obj.S;
+                if iscell(Param_Idx), Param_Idx = cellfun(@(Str) find(strcmp(Str,obj.s_ParamDescription)),Param_Idx); end
+                S_value(Param_Idx) = Param_Value;
+            end
+            
+            options = optimoptions('particleswarm','Display',obj.Display,...
+                'FunctionTolerance',1e-6,...
+                'MaxIterations',obj.t*200);
+            exitflag = -1;resnorm=10;
+            while exitflag<=0 || norm(resnorm)>1e-4
+                obj.n_trail = obj.n_trail+1;
+                [X,resnorm,exitflag] = particleswarm(@(x)SumSquare(@obj.res_StateEquation,x(:),S_value),obj.t,[],[],options);
+            end
+            dP=arrayfun(@(Branch_idx)obj.BranchPressureDrop(Branch_idx,X,S_value),(1:obj.b)','UniformOutput',false);
+            dP=cell2mat(dP);
+            obj.X = X;
+            Q = obj.U*X;
+            P = (obj.A*obj.A')\obj.A*dP;
+            obj.Q = Q;
+            obj.P = P;
+            function [y, dydx] = SumSquare(f, x, varargin)
+                [e, dedx]=f(x, varargin{:});
+                y = e'*e;
+                dydx = 2*e'*dedx;
+            end
         end
                 
         function Q = SetDamperAndReadFlow(obj, theta, DamperID)
