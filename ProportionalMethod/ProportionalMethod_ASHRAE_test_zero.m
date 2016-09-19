@@ -1,9 +1,8 @@
-% Set damping ratio to 0.2
-% Starting from the second lowest P
+%This test does not reduce every terminal equally to let the minimum one to be zero. Instead, it only makes the minimum one to be zero
+
 ASHRAE_duct;
-DesignFlow = {[700,250,950]/1000,[275,275,475,475,200,200]/1000};% M
-lambda = 0.2;
-Max_Iter = 100;
+DesignFlow = {[700,250,950],[275,275,475,475,200,200]};% M
+lambda = 1;
 
 N = cellfun(@length,DesignFlow);
 Branch = length(N);% M, number of branches
@@ -14,7 +13,7 @@ I = cell(1,Branch);
 TargetFlow = cell(1,Branch);
 Theta = cell(1,Branch);
 duct.S(206) = 500; % Fan Max Pressure;
-duct.S(207) = 1900/1000; % Fan Max Flow;
+duct.S(207) = 500; % Fan Max Flow;
 duct.SetDamperAndReadFlow(zeros(1,sum(N)),1:sum(N));% fully open all dampers
 options = optimset('Display','none','TolX',0.1);
 
@@ -25,7 +24,7 @@ for i = 1:Branch
     ERR{i} = abs(P{i}-1);
     Iter = 0;
     Theta{i} = zeros(0,N(i));
-    while max(ERR{i}(end,:))>0.1 && Iter <Max_Iter
+    while max(ERR{i}(end,:))>0.1 && Iter <50
         [~,I{i}(end+1,:)] = sort(P{i}(end,:));
         TargetFlow{i}(end+1,:) = lambda*DesignFlow{i}*P{i}(end,I{i}(end,1))+(1-lambda)*Q{i}(end,:);
         Iter = size(Theta{i},1)+1;
@@ -39,7 +38,8 @@ for i = 1:Branch
             duct.SetDamperAndReadFlow(theta,DamperID(j)); 
         end
         theta = Theta{i}(end,:)
-        Theta{i}(end+1,:)=Theta{i}(end,:)-min(Theta{i}(end,:));
+        Theta{i}(end+1,:)=Theta{i}(end,:);
+        Theta{i}(end+1,I{i}(end,1))=0;
         theta = Theta{i}(end,:)
         Q{i}(end+1,:) = duct.SetDamperAndReadFlow(Theta{i}(end,:),DamperID);
         q = Q{i}(end,:)

@@ -330,7 +330,7 @@ classdef DuctNetwork < handle
         
         function [X, Q, P] = Sim(obj, varargin)
             obj.UseNumericGrad = false;
-            obj.Display = 'none';
+            obj.Display = 'iter';
             [X, Q, P] = obj.Sim_trust_region_reflective(varargin{:});
         end
         
@@ -361,9 +361,10 @@ classdef DuctNetwork < handle
             while exitflag<=0 || resnorm>1e-3
                 obj.n_trail = obj.n_trail+1;
                 [X,resnorm,~,exitflag] = lsqnonlin(@(x) obj.res_StateEquation(x,S_value),X0,obj.X_lb,obj.X_ub,options);
+                disp(exitflag);
                 X0 = randn(obj.t,1);
                 if ~isempty(obj.X_lb) && ~isempty(obj.X_ub) && any([X0<obj.X_lb;X0>obj.X_ub])
-                    X0 = obj.X_ub + rand(obj.t,1).*(obj.X_ub-obj.X_lb);
+                    X0 = obj.X_lb + rand(obj.t,1).*(obj.X_ub-obj.X_lb);
                 elseif ~isempty(obj.X_lb) && any(X0<obj.X_lb)
                     X0 = obj.X_lb + rand(obj.t,1);
                 elseif ~isempty(obj.X_ub) && any(X0>obj.X_ub)
@@ -374,11 +375,10 @@ classdef DuctNetwork < handle
                 end
 %                 Q = (obj.U*X)'
             end
-            dP=arrayfun(@(Branch_idx)obj.BranchPressureDrop(Branch_idx,X,S_value),(1:obj.b)','UniformOutput',false);
-            dP=cell2mat(dP);
+            dP=arrayfun(@(Branch_idx)obj.BranchPressureDrop(Branch_idx,X,S_value),(1:obj.b)','UniformOutput',true);
             obj.X = X;
             Q = obj.U*X;
-            P = (obj.A*obj.A')\obj.A*dP;
+            P = (obj.A')\dP;
             obj.Q = Q;
             obj.P = P;
         end
@@ -753,7 +753,7 @@ classdef DuctNetwork < handle
                 query = {query};
             end
             varargout = cell(1,nargout);
-            [varargout{:}] = DuctNetwork.CircularDarcyWeisbachChurchill(query, varargin{:});
+            [varargout{:}] = DuctNetwork.CircularDarcyWeisbachHaaland(query, varargin{:});
         end
         
         function varargout = CircularDarcyWeisbachHaaland(query, varargin)

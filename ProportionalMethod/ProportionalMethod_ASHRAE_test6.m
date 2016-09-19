@@ -1,8 +1,8 @@
-% Set damping ratio to 0.2
+% Set damping ratio to 0.3
 % Starting from the second lowest P
 ASHRAE_duct;
 DesignFlow = {[700,250,950]/1000,[275,275,475,475,200,200]/1000};% M
-lambda = 0.2;
+lambda = 0.3;
 Max_Iter = 100;
 
 N = cellfun(@length,DesignFlow);

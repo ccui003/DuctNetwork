@@ -1,4 +1,4 @@
-% Starting from the second lowest P
+% Starting from the highest damper till the second lowest damper, the proportional method adjusts the damper of each terminal to achieve their target flow rate.
 ASHRAE_duct;
 DesignFlow = {[700,250,950]/1000,[275,275,475,475,200,200]/1000};% M
 Max_Iter = 100;

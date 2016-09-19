@@ -1,8 +1,8 @@
-% Set damping ratio to 0.2
+% Set damping ratio to 0.1
 % Starting from the second lowest P
 ASHRAE_duct;
 DesignFlow = {[700,250,950]/1000,[275,275,475,475,200,200]/1000};% M
-lambda = 0.2;
+lambda = 0.1;
 Max_Iter = 100;
 
 N = cellfun(@length,DesignFlow);
@@ -14,9 +14,9 @@ I = cell(1,Branch);
 TargetFlow = cell(1,Branch);
 Theta = cell(1,Branch);
 duct.S(206) = 500; % Fan Max Pressure;
-duct.S(207) = 1900/1000; % Fan Max Flow;
+duct.S(207) = 1.9; % Fan Max Flow;
 duct.SetDamperAndReadFlow(zeros(1,sum(N)),1:sum(N));% fully open all dampers
-options = optimset('Display','none','TolX',0.1);
+options = optimset('Display','iter','TolX',0.1);
 
 for i = 1:Branch
     DamperID = sum(N(1:i-1))+1 : sum(N(1:i));% dampers being adjusted in the current branch

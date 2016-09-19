@@ -1,6 +1,7 @@
+% This test introduces the damper ratio lambda so that the target of adjusting dampers is no longer the target flow ratio, but a mid way between current flow and the target flow
 % Starting from the second lowest P
 ASHRAE_duct;
-DesignFlow = {[700,250,950],[275,275,475,475,200,200]};% M
+DesignFlow = {[700,250,950]/1000,[275,275,475,475,200,200]/1000};% M
 lambda = 0.5;
 Max_Iter = 100;
 
@@ -13,7 +14,7 @@ I = cell(1,Branch);
 TargetFlow = cell(1,Branch);
 Theta = cell(1,Branch);
 duct.S(206) = 500; % Fan Max Pressure;
-duct.S(207) = 1900; % Fan Max Flow;
+duct.S(207) = 1900/1000; % Fan Max Flow;
 duct.SetDamperAndReadFlow(zeros(1,sum(N)),1:sum(N));% fully open all dampers
 options = optimset('Display','none','TolX',0.1);
 
